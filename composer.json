@@ -1,0 +1,14 @@
+{
+    "name": "openjobspec/sdk",
+    "description": "PHP SDK for Open Job Spec (OJS)",
+    "type": "library",
+    "license": "Apache-2.0",
+    "require": {
+        "php": ">=8.2"
+    },
+    "autoload": {
+        "psr-4": {
+            "OpenJobSpec\\": "src/"
+        }
+    }
+}
