@@ -1,14 +1,34 @@
 {
     "name": "openjobspec/sdk",
-    "description": "PHP SDK for Open Job Spec (OJS)",
+    "description": "PHP SDK for Open Job Spec (OJS) — the open standard for background job processing",
     "type": "library",
     "license": "Apache-2.0",
+    "keywords": ["background-jobs", "job-queue", "task-queue", "openjobspec", "ojs"],
+    "homepage": "https://openjobspec.org",
     "require": {
-        "php": ">=8.2"
+        "php": ">=8.2",
+        "ext-curl": "*",
+        "ext-json": "*"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0"
     },
     "autoload": {
         "psr-4": {
-            "OpenJobSpec\\": "src/"
+            "OpenJobSpec\\": "src/",
+            "OpenJobSpec\\Testing\\": "src/Testing/"
         }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "OpenJobSpec\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit --colors=always",
+        "test:coverage": "phpunit --coverage-text --colors=always"
+    },
+    "config": {
+        "sort-packages": true
     }
 }
