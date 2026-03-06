@@ -111,6 +111,9 @@ class HttpTransport implements Transport
             if ($curlErrno === CURLE_OPERATION_TIMEDOUT || $curlErrno === CURLE_OPERATION_TIMEOUTED) {
                 throw new TimeoutError("Request timed out: {$curlError}");
             }
+            if ($curlErrno === CURLE_COULDNT_CONNECT || $curlErrno === CURLE_COULDNT_RESOLVE_HOST || $curlErrno === CURLE_COULDNT_RESOLVE_PROXY) {
+                throw new ConnectionError("Failed to connect to OJS server: {$curlError}");
+            }
             throw new ConnectionError("cURL error ({$curlErrno}): {$curlError}");
         }
 
