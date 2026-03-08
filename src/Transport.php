@@ -52,6 +52,7 @@ class HttpTransport implements Transport
         $this->headers = [
             'Content-Type' => 'application/openjobspec+json',
             'Accept' => 'application/openjobspec+json',
+            'OJS-Version' => '1.0',
         ];
         if (isset($options['auth_token'])) {
             $this->headers['Authorization'] = 'Bearer ' . $options['auth_token'];
@@ -87,9 +88,12 @@ class HttpTransport implements Transport
             throw new ConnectionError("Failed to initialize cURL for {$method} {$path}");
         }
 
+        $requestHeaders = $this->headers;
+        $requestHeaders['X-Request-ID'] = $this->generateRequestId();
+
         $opts = [
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HTTPHEADER => $this->formatHeaders(),
+            CURLOPT_HTTPHEADER => $this->formatHeaderArray($requestHeaders),
             CURLOPT_CONNECTTIMEOUT => $this->connectTimeout,
             CURLOPT_TIMEOUT => $this->timeout,
             CURLOPT_CUSTOMREQUEST => $method,
@@ -138,10 +142,28 @@ class HttpTransport implements Transport
 
     private function formatHeaders(): array
     {
+        return $this->formatHeaderArray($this->headers);
+    }
+
+    /** @param array<string, string> $headers */
+    private function formatHeaderArray(array $headers): array
+    {
         $result = [];
-        foreach ($this->headers as $k => $v) {
+        foreach ($headers as $k => $v) {
             $result[] = "{$k}: {$v}";
         }
         return $result;
+    }
+
+    private function generateRequestId(): string
+    {
+        return sprintf(
+            '%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff),
+            mt_rand(0, 0xffff),
+            mt_rand(0, 0x0fff) | 0x4000,
+            mt_rand(0, 0x3fff) | 0x8000,
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
+        );
     }
 }

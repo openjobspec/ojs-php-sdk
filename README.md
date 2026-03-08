@@ -1,5 +1,7 @@
 # OJS PHP SDK
 
+[![CI](https://github.com/openjobspec/ojs-php-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/openjobspec/ojs-php-sdk/actions/workflows/ci.yml)
+
 PHP 8.2+ SDK for [Open Job Spec](https://openjobspec.org) — the open standard for background job processing.
 
 > **Zero required dependencies** — uses only `ext-curl` and `ext-json` from PHP stdlib.

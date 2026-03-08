@@ -1,0 +1,6 @@
+# Default owners for everything in this repo
+* @openjobspec/sdk-maintainers
+
+# PHP-specific reviewers
+/src/ @openjobspec/sdk-maintainers
+/tests/ @openjobspec/sdk-maintainers
