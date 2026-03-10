@@ -306,6 +306,13 @@ class Client
 
     private static function buildJobPayload(string $type, array $args, array $options): array
     {
+        if (trim($type) === '') {
+            throw new \InvalidArgumentException('Job type must not be empty.');
+        }
+        if (isset($options['queue']) && trim((string) $options['queue']) === '') {
+            throw new \InvalidArgumentException('Queue name must not be empty.');
+        }
+
         $body = ['type' => $type, 'args' => $args];
 
         if (isset($options['queue'])) {
