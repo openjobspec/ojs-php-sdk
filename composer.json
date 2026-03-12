@@ -1,7 +1,7 @@
 {
     "name": "openjobspec/sdk",
     "description": "PHP SDK for Open Job Spec (OJS) — the open standard for background job processing",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "type": "library",
     "license": "Apache-2.0",
     "keywords": ["background-jobs", "job-queue", "task-queue", "openjobspec", "ojs"],

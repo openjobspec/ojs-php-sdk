@@ -304,13 +304,37 @@ class Client
         return null;
     }
 
+    private const TYPE_PATTERN = '/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/';
+    private const QUEUE_PATTERN = '/^[a-z0-9]([a-z0-9]*[-.]?[a-z0-9]+)*$/';
+    private const MAX_TYPE_LENGTH = 255;
+    private const MAX_QUEUE_LENGTH = 128;
+
     private static function buildJobPayload(string $type, array $args, array $options): array
     {
         if (trim($type) === '') {
             throw new \InvalidArgumentException('Job type must not be empty.');
         }
-        if (isset($options['queue']) && trim((string) $options['queue']) === '') {
-            throw new \InvalidArgumentException('Queue name must not be empty.');
+        if (strlen($type) > self::MAX_TYPE_LENGTH) {
+            throw new \InvalidArgumentException('Job type must not exceed ' . self::MAX_TYPE_LENGTH . ' characters.');
+        }
+        if (!preg_match(self::TYPE_PATTERN, $type)) {
+            throw new \InvalidArgumentException(
+                "Invalid job type \"{$type}\": must match ^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$"
+            );
+        }
+        if (isset($options['queue'])) {
+            $queue = (string) $options['queue'];
+            if (trim($queue) === '') {
+                throw new \InvalidArgumentException('Queue name must not be empty.');
+            }
+            if (strlen($queue) > self::MAX_QUEUE_LENGTH) {
+                throw new \InvalidArgumentException('Queue name must not exceed ' . self::MAX_QUEUE_LENGTH . ' characters.');
+            }
+            if (!preg_match(self::QUEUE_PATTERN, $queue)) {
+                throw new \InvalidArgumentException(
+                    "Invalid queue name \"{$queue}\": must match ^[a-z0-9][a-z0-9\\-.]*$"
+                );
+            }
         }
 
         $body = ['type' => $type, 'args' => $args];

@@ -129,11 +129,12 @@ class SSESubscription
 
             foreach (explode("\n", $block) as $line) {
                 if (str_starts_with($line, 'event:')) {
-                    $eventType = trim(substr($line, 6));
+                    $eventType = ltrim(substr($line, 6));
                 } elseif (str_starts_with($line, 'data:')) {
-                    $eventData .= trim(substr($line, 5));
+                    $chunk = ltrim(substr($line, 5));
+                    $eventData = $eventData === '' ? $chunk : $eventData . "\n" . $chunk;
                 } elseif (str_starts_with($line, 'id:')) {
-                    $eventId = trim(substr($line, 3));
+                    $eventId = ltrim(substr($line, 3));
                 }
             }
 

@@ -44,11 +44,16 @@ class HttpTransport implements Transport
     private int $connectTimeout;
     private int $timeout;
 
+    private int $maxRetries;
+    private bool $retryServerErrors;
+
     public function __construct(string $baseUrl, array $options = [])
     {
         $this->baseUrl = rtrim($baseUrl, '/');
         $this->connectTimeout = $options['connect_timeout'] ?? 5;
         $this->timeout = $options['timeout'] ?? 30;
+        $this->maxRetries = $options['max_retries'] ?? 3;
+        $this->retryServerErrors = $options['retry_server_errors'] ?? true;
         $this->headers = [
             'Content-Type' => 'application/openjobspec+json',
             'Accept' => 'application/openjobspec+json',
@@ -82,6 +87,11 @@ class HttpTransport implements Transport
     }
 
     private function request(string $method, string $path, ?array $body = null): array
+    {
+        return $this->requestWithRetry($method, $path, $body, 0);
+    }
+
+    private function requestWithRetry(string $method, string $path, ?array $body, int $attempt): array
     {
         $ch = curl_init($this->baseUrl . $path);
         if ($ch === false) {
@@ -131,6 +141,14 @@ class HttpTransport implements Transport
         $decoded = json_decode($response, true);
         if ($decoded === null && json_last_error() !== JSON_ERROR_NONE) {
             throw new ServerError("Invalid JSON response: " . json_last_error_msg());
+        }
+
+        if ($httpCode === 429 || ($this->retryServerErrors && in_array($httpCode, [502, 503, 504], true))) {
+            if ($attempt < $this->maxRetries) {
+                $delay = min(0.5 * pow(2, $attempt), 30.0) * (0.5 + lcg_value() * 0.5);
+                usleep((int) ($delay * 1_000_000));
+                return $this->requestWithRetry($method, $path, $body, $attempt + 1);
+            }
         }
 
         if ($httpCode >= 400) {
