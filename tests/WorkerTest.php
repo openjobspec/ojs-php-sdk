@@ -25,6 +25,35 @@ class WorkerTest extends TestCase
         $this->assertInstanceOf(Worker::class, $result);
     }
 
+    public function testDefaultFetchUsesDefaultQueueOnly(): void
+    {
+        $worker = new Worker('http://fake', ['transport' => $this->transport]);
+        $worker->register('email.send', fn(JobContext $ctx) => 'ok');
+
+        $worker->processOnce();
+
+        $fetch = $this->transport->requests()[0];
+        $this->assertSame('/ojs/v1/workers/fetch', $fetch['path']);
+        $this->assertSame(['default'], $fetch['body']['queues']);
+        $this->assertNotContains('email.send', $fetch['body']['queues']);
+    }
+
+    public function testExplicitFetchQueuesRemainVerbatim(): void
+    {
+        $queues = ['critical', 'critical', 'low.priority'];
+        $worker = new Worker('http://fake', [
+            'transport' => $this->transport,
+            'queues' => $queues,
+        ]);
+        $worker->register('unrelated.handler.type', fn(JobContext $ctx) => 'ok');
+
+        $worker->processOnce();
+
+        $fetch = $this->transport->requests()[0];
+        $this->assertSame($queues, $fetch['body']['queues']);
+        $this->assertNotContains('unrelated.handler.type', $fetch['body']['queues']);
+    }
+
     public function testProcessOnce(): void
     {
         $this->transport->post('/ojs/v1/jobs', ['type' => 'test.echo', 'args' => ['hello']]);

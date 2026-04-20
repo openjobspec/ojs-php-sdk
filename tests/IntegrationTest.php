@@ -29,12 +29,11 @@ final class IntegrationTest extends TestCase
         $client = new Client('http://localhost:8080', transport: $this->transport);
         $job = $client->enqueue('integration.test', [['action' => 'process']], queue: 'integration');
 
-        $this->assertNotNull($job);
         $this->assertNotEmpty($job->id);
         $this->assertSame('integration.test', $job->type);
 
         $processed = false;
-        $worker = new Worker('http://localhost:8080', transport: $this->transport);
+        $worker = new Worker('http://localhost:8080', transport: $this->transport, queues: ['integration']);
         $worker->register('integration.test', function ($ctx) use (&$processed) {
             $processed = true;
             $this->assertSame('integration.test', $ctx->job->type);
@@ -54,7 +53,7 @@ final class IntegrationTest extends TestCase
         }
 
         $processedSeqs = [];
-        $worker = new Worker('http://localhost:8080', transport: $this->transport);
+        $worker = new Worker('http://localhost:8080', transport: $this->transport, queues: ['order']);
         $worker->register('integration.order', function ($ctx) use (&$processedSeqs) {
             $args = $ctx->job->args[0] ?? [];
             $processedSeqs[] = $args['seq'] ?? 0;
@@ -76,7 +75,7 @@ final class IntegrationTest extends TestCase
         $middlewareExecuted = false;
         $handlerExecuted = false;
 
-        $worker = new Worker('http://localhost:8080', transport: $this->transport);
+        $worker = new Worker('http://localhost:8080', transport: $this->transport, queues: ['mw']);
 
         $worker->use(function ($ctx, $next) use (&$middlewareExecuted) {
             $middlewareExecuted = true;
@@ -99,7 +98,7 @@ final class IntegrationTest extends TestCase
         $client->enqueue('integration.retry', [['action' => 'fail-once']], queue: 'retry');
 
         $attempts = 0;
-        $worker = new Worker('http://localhost:8080', transport: $this->transport);
+        $worker = new Worker('http://localhost:8080', transport: $this->transport, queues: ['retry']);
         $worker->register('integration.retry', function ($ctx) use (&$attempts) {
             $attempts++;
             if ($attempts === 1) {
@@ -115,7 +114,7 @@ final class IntegrationTest extends TestCase
         $requests = $this->transport->requests();
         $nackSent = false;
         foreach ($requests as $req) {
-            if (str_contains($req['path'] ?? '', 'nack')) {
+            if (str_contains($req['path'], 'nack')) {
                 $nackSent = true;
             }
         }
@@ -128,7 +127,6 @@ final class IntegrationTest extends TestCase
         $job = $client->enqueue('integration.get', [['data' => 1]], queue: 'default');
 
         $retrieved = $client->getJob($job->id);
-        $this->assertNotNull($retrieved);
         $this->assertSame($job->id, $retrieved->id);
         $this->assertSame('integration.get', $retrieved->type);
     }
@@ -139,7 +137,7 @@ final class IntegrationTest extends TestCase
         $job = $client->enqueue('integration.cancel', [['data' => 1]], queue: 'default');
 
         $cancelled = $client->cancel($job->id);
-        $this->assertNotNull($cancelled);
+        $this->assertSame('cancelled', $cancelled->state);
     }
 
     public function testBatchEnqueueAndProcessAll(): void
@@ -152,7 +150,7 @@ final class IntegrationTest extends TestCase
             ['type' => 'integration.batch', 'args' => [['seq' => 3]]],
         ]);
 
-        $this->assertNotNull($jobs);
+        $this->assertCount(3, $jobs);
 
         $count = 0;
         $worker = new Worker('http://localhost:8080', transport: $this->transport);
@@ -179,7 +177,7 @@ final class IntegrationTest extends TestCase
             ],
         ]);
 
-        $this->assertNotNull($workflow);
+        $this->assertArrayHasKey('id', $workflow);
     }
 
     public function testDifferentJobTypesOnDifferentQueues(): void
@@ -192,7 +190,11 @@ final class IntegrationTest extends TestCase
         $emailProcessed = false;
         $reportProcessed = false;
 
-        $worker = new Worker('http://localhost:8080', transport: $this->transport);
+        $worker = new Worker(
+            'http://localhost:8080',
+            transport: $this->transport,
+            queues: ['email', 'reports'],
+        );
         $worker->register('email.send', function ($ctx) use (&$emailProcessed) {
             $emailProcessed = true;
         });

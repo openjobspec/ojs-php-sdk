@@ -31,9 +31,11 @@ class Worker
     private float $shutdownTimeout;
 
     private float $lastHeartbeat = 0;
+    private int $anonymousMiddlewareSeq = 0;
 
-    public function __construct(string $url, array $options = [])
+    public function __construct(string $url, array $options = [], mixed ...$named)
     {
+        $options = [...$options, ...$named];
         if (isset($options['transport']) && $options['transport'] instanceof Transport) {
             $this->transport = $options['transport'];
         } else {
@@ -41,7 +43,7 @@ class Worker
         }
 
         $this->middleware = new MiddlewareChain();
-        $this->queues = $options['queues'] ?? [];
+        $this->queues = array_key_exists('queues', $options) ? $options['queues'] : ['default'];
         $this->concurrency = $options['concurrency'] ?? 5;
         $this->pollInterval = $options['poll_interval'] ?? 2.0;
         $this->heartbeatInterval = $options['heartbeat_interval'] ?? 15.0;
@@ -59,10 +61,20 @@ class Worker
 
     /**
      * Add middleware to the chain (outermost first).
+     *
+     * Accepts either a named middleware (`use('name', $mw)`) or an anonymous
+     * one (`use($mw)`), in which case a synthetic name is generated.
      */
-    public function use(string $name, Middleware|callable $middleware): self
+    public function use(string|Middleware|callable $name, Middleware|callable|null $middleware = null): self
     {
-        $this->middleware->add($name, $middleware);
+        if (is_string($name)) {
+            if ($middleware === null) {
+                throw new \InvalidArgumentException('A middleware instance must be provided when a name is given.');
+            }
+            $this->middleware->add($name, $middleware);
+        } else {
+            $this->middleware->add('middleware_' . $this->anonymousMiddlewareSeq++, $name);
+        }
         return $this;
     }
 
@@ -154,14 +166,9 @@ class Worker
 
     private function poll(): void
     {
-        $activeQueues = $this->getActiveQueues();
-        if ($activeQueues === []) {
-            return;
-        }
-
         try {
             $response = $this->transport->post('/ojs/v1/workers/fetch', [
-                'queues' => $activeQueues,
+                'queues' => $this->getActiveQueues(),
                 'count' => $this->concurrency,
             ]);
         } catch (OjsException) {
@@ -258,11 +265,7 @@ class Worker
 
     private function getActiveQueues(): array
     {
-        if ($this->queues !== []) {
-            return $this->queues;
-        }
-        $registered = array_keys($this->handlers);
-        return $registered !== [] ? $registered : ['default'];
+        return $this->queues;
     }
 
     private function emit(string $eventType, array $data): void
