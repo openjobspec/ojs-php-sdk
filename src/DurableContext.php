@@ -158,16 +158,8 @@ class DurableContext
      */
     public function random(int $numBytes): string
     {
-        if ($this->replayIndex < count($this->replayLog)) {
-            $entry = $this->replayLog[$this->replayIndex];
-            $this->replayIndex++;
-            return $entry;
-        }
-
-        $hex = bin2hex(random_bytes($numBytes));
-        $this->replayLog[] = $hex;
-        $this->replayIndex++;
-        return $hex;
+        $value = $this->replayOrRecord(fn() => bin2hex(random_bytes($numBytes)));
+        return is_string($value) ? $value : (string) $value;
     }
 
     /**
@@ -184,16 +176,25 @@ class DurableContext
      */
     public function sideEffect(string $key, callable $fn): mixed
     {
+        return $this->replayOrRecord($fn);
+    }
+
+    /**
+     * Return the next recorded replay-log entry, advancing the cursor; when the
+     * cursor is past the end of the log, invoke $produce(), record its result,
+     * and return it. Centralises the record-or-replay bookkeeping shared by the
+     * deterministic operations.
+     */
+    private function replayOrRecord(callable $produce): mixed
+    {
         if ($this->replayIndex < count($this->replayLog)) {
-            $entry = $this->replayLog[$this->replayIndex];
-            $this->replayIndex++;
-            return $entry;
+            return $this->replayLog[$this->replayIndex++];
         }
 
-        $result = $fn();
-        $this->replayLog[] = $result;
+        $value = $produce();
+        $this->replayLog[] = $value;
         $this->replayIndex++;
-        return $result;
+        return $value;
     }
 
     // ── Accessors ───────────────────────────────────────────
