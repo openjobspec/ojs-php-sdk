@@ -18,7 +18,8 @@
         "psr-4": {
             "OpenJobSpec\\": "src/",
             "OpenJobSpec\\Testing\\": "src/Testing/"
-        }
+        },
+        "classmap": ["src/"]
     },
     "autoload-dev": {
         "psr-4": {
