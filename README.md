@@ -1,5 +1,5 @@
 # OJS PHP SDK
-[![Stability: stable](https://img.shields.io/badge/stability-stable-brightgreen.svg)](https://github.com/openjobspec/openjobspec/blob/main/STABILITY.md)
+[![Stability: stable](https://img.shields.io/badge/stability-stable-brightgreen.svg)](https://openjobspec.org)
 
 [![CI](https://github.com/openjobspec/ojs-php-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/openjobspec/ojs-php-sdk/actions/workflows/ci.yml)
 
@@ -328,4 +328,3 @@ composer test          # Run PHPUnit tests
 ## License
 
 Apache-2.0
-
