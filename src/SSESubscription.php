@@ -13,8 +13,7 @@ namespace OpenJobSpec;
 class SSESubscription
 {
     private bool $active = false;
-    /** @var resource|null */
-    private $curlHandle = null;
+    private ?\CurlHandle $curlHandle = null;
 
     private function __construct(
         private readonly string $url,
@@ -71,15 +70,20 @@ class SSESubscription
     public function cancel(): void
     {
         $this->active = false;
-        if ($this->curlHandle !== null) {
-            curl_close($this->curlHandle);
-            $this->curlHandle = null;
-        }
+        $this->closeHandle();
     }
 
     public function isActive(): bool
     {
         return $this->active;
+    }
+
+    private function closeHandle(): void
+    {
+        if ($this->curlHandle !== null) {
+            curl_close($this->curlHandle);
+            $this->curlHandle = null;
+        }
     }
 
     private function connect(callable $callback): void
@@ -110,11 +114,7 @@ class SSESubscription
 
         curl_exec($ch);
         $this->active = false;
-
-        if ($this->curlHandle !== null) {
-            curl_close($this->curlHandle);
-            $this->curlHandle = null;
-        }
+        $this->closeHandle();
     }
 
     private function parseSSE(string &$buffer, callable $callback): void

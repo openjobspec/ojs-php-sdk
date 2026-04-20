@@ -288,7 +288,7 @@ class Worker
         foreach ($e->getTrace() as $frame) {
             $file = $frame['file'] ?? '<internal>';
             $line = $frame['line'] ?? 0;
-            $func = ($frame['class'] ?? '') . ($frame['type'] ?? '') . ($frame['function'] ?? '');
+            $func = ($frame['class'] ?? '') . ($frame['type'] ?? '') . $frame['function'];
             $trace[] = "{$file}:{$line} in {$func}";
         }
         return array_slice($trace, 0, 20);

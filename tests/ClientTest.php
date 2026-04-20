@@ -185,7 +185,7 @@ class ClientTest extends TestCase
     public function testDeadLetterOperations(): void
     {
         $deadJobs = $this->client->getDeadLetterJobs();
-        $this->assertIsArray($deadJobs);
+        $this->assertSame([], $deadJobs);
     }
 
     // ── Cron Jobs ───────────────────────────────────────────

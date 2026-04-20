@@ -15,7 +15,6 @@ class SSESubscriptionTest extends TestCase
     {
         $sub = $this->createSubscription('http://localhost:8080');
         $method = new \ReflectionMethod($sub, 'parseSSE');
-        $method->setAccessible(true);
         $method->invokeArgs($sub, [&$buffer, $callback]);
         return $buffer;
     }
@@ -26,11 +25,9 @@ class SSESubscriptionTest extends TestCase
         $instance = $class->newInstanceWithoutConstructor();
 
         $urlProp = $class->getProperty('url');
-        $urlProp->setAccessible(true);
         $urlProp->setValue($instance, $url);
 
         $headersProp = $class->getProperty('headers');
-        $headersProp->setAccessible(true);
         $headersProp->setValue($instance, []);
 
         return $instance;
@@ -135,7 +132,6 @@ class SSESubscriptionTest extends TestCase
     public function testBuildHeadersWithoutAuth(): void
     {
         $method = new \ReflectionMethod(SSESubscription::class, 'buildHeaders');
-        $method->setAccessible(true);
 
         $headers = $method->invoke(null, null);
         $this->assertEquals(['Cache-Control: no-cache'], $headers);
@@ -144,7 +140,6 @@ class SSESubscriptionTest extends TestCase
     public function testBuildHeadersWithAuth(): void
     {
         $method = new \ReflectionMethod(SSESubscription::class, 'buildHeaders');
-        $method->setAccessible(true);
 
         $headers = $method->invoke(null, 'my-secret-token');
         $this->assertCount(2, $headers);
@@ -157,7 +152,6 @@ class SSESubscriptionTest extends TestCase
     public function testForJobUrlConstruction(): void
     {
         $urlProp = new \ReflectionProperty(SSESubscription::class, 'url');
-        $urlProp->setAccessible(true);
 
         $sub = $this->createSubscription('http://example.com/ojs/v1/events/jobs/j-123');
         $this->assertEquals('http://example.com/ojs/v1/events/jobs/j-123', $urlProp->getValue($sub));
@@ -166,7 +160,6 @@ class SSESubscriptionTest extends TestCase
     public function testForQueueUrlConstruction(): void
     {
         $urlProp = new \ReflectionProperty(SSESubscription::class, 'url');
-        $urlProp->setAccessible(true);
 
         $sub = $this->createSubscription('http://example.com/ojs/v1/events/queues/critical');
         $this->assertEquals('http://example.com/ojs/v1/events/queues/critical', $urlProp->getValue($sub));
@@ -175,7 +168,6 @@ class SSESubscriptionTest extends TestCase
     public function testForAllUrlConstruction(): void
     {
         $urlProp = new \ReflectionProperty(SSESubscription::class, 'url');
-        $urlProp->setAccessible(true);
 
         $sub = $this->createSubscription('http://example.com/ojs/v1/events');
         $this->assertEquals('http://example.com/ojs/v1/events', $urlProp->getValue($sub));
@@ -194,7 +186,6 @@ class SSESubscriptionTest extends TestCase
         $sub = $this->createSubscription('http://localhost');
 
         $activeProp = new \ReflectionProperty($sub, 'active');
-        $activeProp->setAccessible(true);
         $activeProp->setValue($sub, true);
 
         $this->assertTrue($sub->isActive());

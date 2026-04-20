@@ -33,7 +33,7 @@ final class WorkerErrorTest extends TestCase
     {
         $this->transport->enqueue('error.test', [['action' => 'throw']], 'errors');
 
-        $worker = new Worker('http://localhost:8080', transport: $this->transport);
+        $worker = new Worker('http://localhost:8080', transport: $this->transport, queues: ['errors']);
         $worker->register('error.test', function ($ctx) {
             throw new \RuntimeException('Handler failed intentionally');
         });
@@ -43,7 +43,7 @@ final class WorkerErrorTest extends TestCase
         $requests = $this->transport->requests();
         $nackSent = false;
         foreach ($requests as $req) {
-            if (str_contains($req['path'] ?? '', 'nack')) {
+            if (str_contains($req['path'], 'nack')) {
                 $nackSent = true;
                 $this->assertArrayHasKey('error', $req['body']);
                 $this->assertStringContainsString('Handler failed intentionally', $req['body']['error']['message'] ?? '');
@@ -140,7 +140,7 @@ final class WorkerErrorTest extends TestCase
         $requests = $this->transport->requests();
         $hasNack = false;
         foreach ($requests as $req) {
-            if (str_contains($req['path'] ?? '', 'nack')) {
+            if (str_contains($req['path'], 'nack')) {
                 $hasNack = true;
             }
         }
@@ -151,7 +151,7 @@ final class WorkerErrorTest extends TestCase
     {
         $this->transport->enqueue('overwrite.test', [['data' => 1]], 'errors');
 
-        $worker = new Worker('http://localhost:8080', transport: $this->transport);
+        $worker = new Worker('http://localhost:8080', transport: $this->transport, queues: ['errors']);
 
         $firstCalled = false;
         $secondCalled = false;
@@ -171,23 +171,22 @@ final class WorkerErrorTest extends TestCase
 
     public function testEmptyQueueDoesNotError(): void
     {
-        $worker = new Worker('http://localhost:8080', transport: $this->transport);
+        $worker = new Worker('http://localhost:8080', transport: $this->transport, queues: ['errors']);
         $worker->register('test.noop', function ($ctx) {});
 
         // processOnce on empty queue should not throw
         $worker->processOnce();
-        $this->assertTrue(true, 'Empty queue should not cause errors');
+        $fetch = $this->transport->requests()[0];
+        $this->assertSame(['errors'], $fetch['body']['queues']);
     }
 
     public function testHandlerWithTypeErrorIsNacked(): void
     {
         $this->transport->enqueue('type.error', [['data' => 1]], 'errors');
 
-        $worker = new Worker('http://localhost:8080', transport: $this->transport);
+        $worker = new Worker('http://localhost:8080', transport: $this->transport, queues: ['errors']);
         $worker->register('type.error', function ($ctx) {
-            // Deliberately cause a TypeError
-            $arr = null;
-            return count($arr); // @phpstan-ignore-line
+            throw new \TypeError('Deliberate handler type error');
         });
 
         $worker->processOnce();
@@ -195,7 +194,7 @@ final class WorkerErrorTest extends TestCase
         $requests = $this->transport->requests();
         $hasNack = false;
         foreach ($requests as $req) {
-            if (str_contains($req['path'] ?? '', 'nack')) {
+            if (str_contains($req['path'], 'nack')) {
                 $hasNack = true;
             }
         }

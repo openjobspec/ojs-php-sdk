@@ -122,7 +122,7 @@ class HttpTransport implements Transport
         curl_close($ch);
 
         if ($curlErrno !== 0) {
-            if ($curlErrno === CURLE_OPERATION_TIMEDOUT || $curlErrno === CURLE_OPERATION_TIMEOUTED) {
+            if ($curlErrno === CURLE_OPERATION_TIMEDOUT) {
                 throw new TimeoutError("Request timed out: {$curlError}");
             }
             if ($curlErrno === CURLE_COULDNT_CONNECT || $curlErrno === CURLE_COULDNT_RESOLVE_HOST || $curlErrno === CURLE_COULDNT_RESOLVE_PROXY) {
@@ -156,11 +156,6 @@ class HttpTransport implements Transport
         }
 
         return $decoded ?? [];
-    }
-
-    private function formatHeaders(): array
-    {
-        return $this->formatHeaderArray($this->headers);
     }
 
     /** @param array<string, string> $headers */

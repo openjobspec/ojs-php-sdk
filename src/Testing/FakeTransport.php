@@ -363,10 +363,11 @@ class FakeTransport implements Transport
 
     private function handleCancel(string $jobId): array
     {
-        if (isset($this->jobs[$jobId])) {
-            $this->jobs[$jobId]->state = 'cancelled';
+        $job = $this->jobs[$jobId] ?? null;
+        if ($job !== null) {
+            $job->state = 'cancelled';
         }
-        return $this->jobs[$jobId]?->toArray() ?? [];
+        return $job?->toArray() ?? [];
     }
 
     private function handleQueueStats(string $path): array
@@ -394,11 +395,12 @@ class FakeTransport implements Transport
     {
         preg_match('#/ojs/v1/dead-letter/(.+)/retry#', $path, $m);
         $jobId = $m[1] ?? '';
-        if (isset($this->jobs[$jobId])) {
-            $this->jobs[$jobId]->state = 'available';
-            $this->jobs[$jobId]->error = null;
+        $job = $this->jobs[$jobId] ?? null;
+        if ($job !== null) {
+            $job->state = 'available';
+            $job->error = null;
         }
-        return $this->jobs[$jobId]?->toArray() ?? [];
+        return $job?->toArray() ?? [];
     }
 
     private function handleDiscardDeadLetter(string $path): array
