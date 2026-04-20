@@ -52,33 +52,86 @@ final class WorkerErrorTest extends TestCase
         $this->assertTrue($nackSent, 'Worker should NACK when handler throws exception');
     }
 
-    public function testHandlerReturningFalseIsNacked(): void
+    public function testHandlerReturningFalseIsAckedAsJsonFalse(): void
     {
         $this->transport->enqueue('error.false', [['action' => 'return-false']], 'errors');
 
-        $worker = new Worker('http://localhost:8080', transport: $this->transport);
+        $worker = new Worker('http://localhost:8080', transport: $this->transport, queues: ['errors']);
         $worker->register('error.false', function ($ctx) {
             return false;
+        });
+        $events = [];
+        $worker->on('*', function ($event) use (&$events): void {
+            $events[] = $event->type;
         });
 
         $worker->processOnce();
 
         $requests = $this->transport->requests();
-        $hasNack = false;
-        foreach ($requests as $req) {
-            if (str_contains($req['path'] ?? '', 'nack')) {
-                $hasNack = true;
-            }
+        $acks = array_values(array_filter(
+            $requests,
+            fn(array $request): bool => $request['path'] === '/ojs/v1/workers/ack',
+        ));
+        $nacks = array_values(array_filter(
+            $requests,
+            fn(array $request): bool => $request['path'] === '/ojs/v1/workers/nack',
+        ));
+
+        $this->assertCount(1, $acks);
+        $this->assertArrayHasKey('result', $acks[0]['body']);
+        $this->assertFalse($acks[0]['body']['result']);
+        $this->assertSame([], $nacks);
+        $this->assertContains('job.completed', $events);
+        $this->assertNotContains('job.failed', $events);
+        $this->assertTrue($this->transport->completed('error.false'));
+    }
+
+    public function testOtherFalseyJsonResultsAreAckedWithoutNack(): void
+    {
+        $results = [
+            'result.zero' => 0,
+            'result.empty_string' => '',
+            'result.empty_array' => [],
+        ];
+        $worker = new Worker('http://localhost:8080', transport: $this->transport, queues: ['results']);
+        $events = [];
+
+        foreach ($results as $type => $result) {
+            $this->transport->enqueue($type, [], 'results');
+            $worker->register($type, fn() => $result);
         }
-        // Handler returning false should trigger NACK (non-retryable)
-        $this->assertTrue($hasNack, 'Handler returning false should trigger NACK');
+        $worker->on('*', function ($event) use (&$events): void {
+            $events[] = $event->type;
+        });
+
+        $worker->processOnce();
+
+        $requests = $this->transport->requests();
+        $acks = array_values(array_filter(
+            $requests,
+            fn(array $request): bool => $request['path'] === '/ojs/v1/workers/ack',
+        ));
+        $nacks = array_values(array_filter(
+            $requests,
+            fn(array $request): bool => $request['path'] === '/ojs/v1/workers/nack',
+        ));
+
+        $this->assertSame([0, '', []], array_map(
+            fn(array $request): mixed => $request['body']['result'],
+            $acks,
+        ));
+        $this->assertSame([], $nacks);
+        $this->assertSame(3, count(array_filter(
+            $events,
+            fn(string $event): bool => $event === 'job.completed',
+        )));
     }
 
     public function testUnregisteredJobTypeIsNacked(): void
     {
         $this->transport->enqueue('unknown.type', [['data' => 1]], 'errors');
 
-        $worker = new Worker('http://localhost:8080', transport: $this->transport);
+        $worker = new Worker('http://localhost:8080', transport: $this->transport, queues: ['errors']);
         // Deliberately not registering a handler for 'unknown.type'
         $worker->register('other.type', function ($ctx) {});
 
