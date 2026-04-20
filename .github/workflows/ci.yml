@@ -30,7 +30,5 @@ jobs:
       - name: Run tests
         run: vendor/bin/phpunit --testdox
       - name: Static analysis
-        run: |
-          composer require --dev phpstan/phpstan --no-interaction
-          vendor/bin/phpstan analyse src/ --level=5
+        run: composer analyse
         if: matrix.php-version == '8.3'
