@@ -6,19 +6,50 @@ namespace OpenJobSpec;
 
 /**
  * Base exception for all OJS SDK errors.
+ *
+ * @property-read ?string $code The OJS error code string (e.g. "rate_limited"),
+ *   exposed as a virtual property so it does not collide with the built-in
+ *   {@see \Exception::$code} integer property.
  */
 class OjsException extends \RuntimeException
 {
+    public readonly ?string $errorCode;
+
     public function __construct(
         string $message,
-        public readonly ?string $code = null,
+        int|string|null $code = null,
         public readonly bool $retryable = false,
         public readonly ?string $requestId = null,
         public readonly ?int $httpStatus = null,
         public readonly array $details = [],
         ?\Throwable $previous = null,
     ) {
-        parent::__construct($message, 0, $previous);
+        // An integer $code populates the built-in Exception::$code (getCode());
+        // a string $code is exposed through the virtual read-only $code property.
+        parent::__construct($message, is_int($code) ? $code : 0, $previous);
+        $this->errorCode = is_string($code) ? $code : null;
+    }
+
+    /**
+     * Whether this error is safe to retry.
+     */
+    public function isRetryable(): bool
+    {
+        return $this->retryable;
+    }
+
+    public function __get(string $name): mixed
+    {
+        if ($name === 'code') {
+            return $this->errorCode;
+        }
+
+        throw new \Error(sprintf('Undefined property: %s::$%s', static::class, $name));
+    }
+
+    public function __isset(string $name): bool
+    {
+        return $name === 'code' && $this->errorCode !== null;
     }
 
     public static function fromResponse(array $body, int $httpStatus = 500): self
@@ -62,7 +93,7 @@ class TimeoutError extends OjsException
 
 class ValidationError extends OjsException
 {
-    public function __construct(string $message, ?string $code = null, ?string $requestId = null, array $details = [])
+    public function __construct(string $message, int|string|null $code = null, ?string $requestId = null, array $details = [])
     {
         parent::__construct($message, $code ?? 'validation_error', false, $requestId, 422, $details);
     }
@@ -107,9 +138,22 @@ class RateLimitError extends OjsException
 
 class ServerError extends OjsException
 {
-    public function __construct(string $message, ?string $code = null, ?string $requestId = null, array $details = [])
-    {
-        parent::__construct($message, $code ?? 'server_error', true, $requestId, 500, $details);
+    public function __construct(
+        string $message,
+        int|string|null $code = null,
+        ?string $requestId = null,
+        array $details = [],
+        ?\Throwable $previous = null,
+    ) {
+        parent::__construct(
+            $message,
+            $code ?? 'server_error',
+            true,
+            $requestId,
+            is_int($code) ? $code : 500,
+            $details,
+            $previous,
+        );
     }
 }
 

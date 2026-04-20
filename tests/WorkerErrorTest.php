@@ -8,10 +8,10 @@ use OpenJobSpec\Client;
 use OpenJobSpec\Job;
 use OpenJobSpec\Testing\FakeTransport;
 use OpenJobSpec\Worker;
-use OpenJobSpec\Errors\OjsException;
-use OpenJobSpec\Errors\ConnectionError;
-use OpenJobSpec\Errors\TimeoutError;
-use OpenJobSpec\Errors\ServerError;
+use OpenJobSpec\OjsException;
+use OpenJobSpec\ConnectionError;
+use OpenJobSpec\TimeoutError;
+use OpenJobSpec\ServerError;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -154,7 +154,7 @@ final class WorkerErrorTest extends TestCase
         $retryable = new ServerError('Backend unavailable', 503);
         $this->assertTrue($retryable->isRetryable());
 
-        $nonRetryable = new \OpenJobSpec\Errors\ValidationError('Bad input', 400);
+        $nonRetryable = new \OpenJobSpec\ValidationError('Bad input', 400);
         $this->assertFalse($nonRetryable->isRetryable());
     }
 
@@ -174,9 +174,45 @@ final class WorkerErrorTest extends TestCase
     public function testExceptionChainPreservesOriginal(): void
     {
         $original = new \RuntimeException('Original cause');
-        $wrapped = new ServerError('Wrapped error', 500, $original);
+        $wrapped = new ServerError('Wrapped error', 500, previous: $original);
 
         $this->assertSame($original, $wrapped->getPrevious());
         $this->assertStringContainsString('Wrapped error', $wrapped->getMessage());
+    }
+
+    public function testServerErrorPositionalConstructorCompatibility(): void
+    {
+        $original = new \RuntimeException('Original cause');
+        $error = new ServerError(
+            'Backend unavailable',
+            'backend_unavailable',
+            'req-123',
+            ['region' => 'eu-west'],
+            $original,
+        );
+
+        $this->assertSame('backend_unavailable', $error->code);
+        $this->assertSame('req-123', $error->requestId);
+        $this->assertSame(['region' => 'eu-west'], $error->details);
+        $this->assertSame($original, $error->getPrevious());
+        $this->assertSame(500, $error->httpStatus);
+    }
+
+    public function testServerErrorNamedConstructorCompatibility(): void
+    {
+        $original = new \RuntimeException('Original cause');
+        $error = new ServerError(
+            message: 'Backend unavailable',
+            code: 503,
+            requestId: 'req-456',
+            details: ['region' => 'us-east'],
+            previous: $original,
+        );
+
+        $this->assertSame(503, $error->getCode());
+        $this->assertSame('req-456', $error->requestId);
+        $this->assertSame(['region' => 'us-east'], $error->details);
+        $this->assertSame($original, $error->getPrevious());
+        $this->assertSame(503, $error->httpStatus);
     }
 }

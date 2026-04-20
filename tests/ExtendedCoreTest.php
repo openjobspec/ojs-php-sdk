@@ -7,14 +7,14 @@ namespace OpenJobSpec\Tests;
 use OpenJobSpec\RetryPolicy;
 use OpenJobSpec\UniquePolicy;
 use OpenJobSpec\Job;
-use OpenJobSpec\Errors\OjsException;
-use OpenJobSpec\Errors\NotFoundError;
-use OpenJobSpec\Errors\ConflictError;
-use OpenJobSpec\Errors\RateLimitError;
-use OpenJobSpec\Errors\ServerError;
-use OpenJobSpec\Errors\ValidationError;
-use OpenJobSpec\Errors\ConnectionError;
-use OpenJobSpec\Errors\TimeoutError;
+use OpenJobSpec\OjsException;
+use OpenJobSpec\NotFoundError;
+use OpenJobSpec\ConflictError;
+use OpenJobSpec\RateLimitError;
+use OpenJobSpec\ServerError;
+use OpenJobSpec\ValidationError;
+use OpenJobSpec\ConnectionError;
+use OpenJobSpec\TimeoutError;
 use PHPUnit\Framework\TestCase;
 
 /**
