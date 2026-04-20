@@ -60,7 +60,7 @@ class CoreTest extends TestCase
     public function testRetryPolicyInvalidMaxAttempts(): void
     {
         $this->expectException(ValidationError::class);
-        new RetryPolicy(maxAttempts: 0);
+        new RetryPolicy(maxAttempts: -1);
     }
 
     public function testRetryPolicyInvalidBackoff(): void

@@ -129,7 +129,9 @@ class Job
                 is_string($data['error'] ?? null) ? ['message' => $data['error']] : null
             ),
             result: $data['result'] ?? null,
-            retryPolicy: isset($data['retry']) ? RetryPolicy::fromArray($data['retry']) : null,
+            retryPolicy: isset($data['retry']) || isset($data['retry_policy'])
+                ? RetryPolicy::fromArray($data['retry'] ?? $data['retry_policy'])
+                : null,
             uniquePolicy: isset($data['unique']) ? UniquePolicy::fromArray($data['unique']) : null,
             schema: $data['schema'] ?? null,
             progress: isset($data['progress']) ? (float) $data['progress'] : null,
