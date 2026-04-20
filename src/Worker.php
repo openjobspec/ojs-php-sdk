@@ -28,7 +28,6 @@ class Worker
     private int $concurrency;
     private float $pollInterval;
     private float $heartbeatInterval;
-    private float $shutdownTimeout;
 
     private float $lastHeartbeat = 0;
     private int $anonymousMiddlewareSeq = 0;
@@ -47,7 +46,6 @@ class Worker
         $this->concurrency = $options['concurrency'] ?? 5;
         $this->pollInterval = $options['poll_interval'] ?? 2.0;
         $this->heartbeatInterval = $options['heartbeat_interval'] ?? 15.0;
-        $this->shutdownTimeout = $options['shutdown_timeout'] ?? 25.0;
     }
 
     /**

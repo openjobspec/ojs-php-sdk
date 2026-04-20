@@ -171,4 +171,22 @@ class WorkerTest extends TestCase
         $worker->stop();
         $this->assertFalse($worker->isRunning());
     }
+
+    public function testWorkerStoppedEventRetainsEmptyPayload(): void
+    {
+        $worker = new Worker('http://fake', [
+            'transport' => $this->transport,
+            'shutdown_timeout' => 1.0,
+        ]);
+        $stoppedData = null;
+
+        $worker->on('worker.started', fn() => $worker->stop());
+        $worker->on('worker.stopped', function ($event) use (&$stoppedData): void {
+            $stoppedData = $event->data;
+        });
+
+        $worker->start();
+
+        $this->assertSame([], $stoppedData);
+    }
 }
