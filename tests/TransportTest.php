@@ -53,7 +53,6 @@ final class TransportTest extends TestCase
             'worker_id' => 'test-worker',
         ]);
 
-        $this->assertNotNull($response);
         $this->assertArrayHasKey('jobs', $response);
     }
 
@@ -72,9 +71,8 @@ final class TransportTest extends TestCase
         $transport = new FakeTransport();
         $response = $transport->request('GET', '/ojs/v1/health');
 
-        $this->assertNotNull($response);
         $this->assertArrayHasKey('status', $response);
-        $this->assertSame('healthy', $response['status']);
+        $this->assertSame('ok', $response['status']);
     }
 
     public function testFakeTransportManifestEndpoint(): void
@@ -82,7 +80,7 @@ final class TransportTest extends TestCase
         $transport = new FakeTransport();
         $response = $transport->request('GET', '/ojs/manifest');
 
-        $this->assertNotNull($response);
+        $this->assertSame('1.0', $response['version']);
     }
 
     public function testFakeTransportBatchEnqueue(): void
@@ -96,10 +94,7 @@ final class TransportTest extends TestCase
             ],
         ]);
 
-        $this->assertNotNull($response);
-        if (isset($response['jobs'])) {
-            $this->assertCount(2, $response['jobs']);
-        }
+        $this->assertCount(2, $response['jobs']);
     }
 
     public function testFakeTransportGetJobById(): void
@@ -116,7 +111,7 @@ final class TransportTest extends TestCase
         if (!empty($fetchResp['jobs'])) {
             $jobId = $fetchResp['jobs'][0]['id'];
             $getResp = $transport->request('GET', "/ojs/v1/jobs/{$jobId}");
-            $this->assertNotNull($getResp);
+            $this->assertSame($jobId, $getResp['id']);
         } else {
             $this->markTestSkipped('No jobs fetched');
         }
@@ -128,7 +123,7 @@ final class TransportTest extends TestCase
         $transport->enqueue('test.stats', [['data' => 1]], 'stats-queue');
 
         $response = $transport->request('GET', '/ojs/v1/queues/stats-queue/stats');
-        $this->assertNotNull($response);
+        $this->assertSame('stats-queue', $response['name']);
     }
 
     public function testFakeTransportCancelJob(): void
@@ -145,7 +140,7 @@ final class TransportTest extends TestCase
         if (!empty($fetchResp['jobs'])) {
             $jobId = $fetchResp['jobs'][0]['id'];
             $cancelResp = $transport->request('DELETE', "/ojs/v1/jobs/{$jobId}");
-            $this->assertNotNull($cancelResp);
+            $this->assertSame('cancelled', $cancelResp['state']);
         } else {
             $this->markTestSkipped('No jobs available for cancel test');
         }

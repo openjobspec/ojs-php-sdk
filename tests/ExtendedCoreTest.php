@@ -7,14 +7,14 @@ namespace OpenJobSpec\Tests;
 use OpenJobSpec\RetryPolicy;
 use OpenJobSpec\UniquePolicy;
 use OpenJobSpec\Job;
-use OpenJobSpec\Errors\OjsException;
-use OpenJobSpec\Errors\NotFoundError;
-use OpenJobSpec\Errors\ConflictError;
-use OpenJobSpec\Errors\RateLimitError;
-use OpenJobSpec\Errors\ServerError;
-use OpenJobSpec\Errors\ValidationError;
-use OpenJobSpec\Errors\ConnectionError;
-use OpenJobSpec\Errors\TimeoutError;
+use OpenJobSpec\OjsException;
+use OpenJobSpec\NotFoundError;
+use OpenJobSpec\ConflictError;
+use OpenJobSpec\RateLimitError;
+use OpenJobSpec\ServerError;
+use OpenJobSpec\ValidationError;
+use OpenJobSpec\ConnectionError;
+use OpenJobSpec\TimeoutError;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -84,6 +84,10 @@ final class ExtendedCoreTest extends TestCase
     {
         $policy = new RetryPolicy(maxAttempts: 0);
         $this->assertSame(0, $policy->maxAttempts);
+        $this->assertSame(0, $policy->toArray()['max_attempts']);
+
+        $restored = RetryPolicy::fromArray($policy->toArray());
+        $this->assertSame(0, $restored->maxAttempts);
     }
 
     public function testRetryPolicyToArray(): void
@@ -124,6 +128,14 @@ final class ExtendedCoreTest extends TestCase
         ]);
 
         $this->assertSame(3, $policy->maxAttempts);
+    }
+
+    public function testRetryPolicyFromArrayPreservesNoRetry(): void
+    {
+        $policy = RetryPolicy::fromArray(['max_attempts' => 0]);
+
+        $this->assertSame(0, $policy->maxAttempts);
+        $this->assertSame(0, $policy->toArray()['max_attempts']);
     }
 
     // ── Unique Policy ────────────────────────────────────

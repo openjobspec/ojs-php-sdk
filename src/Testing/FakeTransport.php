@@ -4,10 +4,7 @@ declare(strict_types=1);
 
 namespace OpenJobSpec\Testing;
 
-use OpenJobSpec\{
-    Client, Event, Job, JobContext, MiddlewareChain, OjsException,
-    QueueStats, Transport, CronJob
-};
+use OpenJobSpec\{CronJob, Job, JobContext, QueueStats, Transport};
 
 /**
  * In-memory fake transport for testing OJS client and worker code
@@ -35,8 +32,12 @@ class FakeTransport implements Transport
 
     private int $counter = 0;
 
+    /** @var list<array{method: string, path: string, body: array}> */
+    private array $requests = [];
+
     public function post(string $path, array $body = []): array
     {
+        $this->requests[] = ['method' => 'POST', 'path' => $path, 'body' => $body];
         return match (true) {
             $path === '/ojs/v1/jobs' => $this->handleEnqueue($body),
             $path === '/ojs/v1/jobs/batch' => $this->handleBatchEnqueue($body),
@@ -56,12 +57,13 @@ class FakeTransport implements Transport
 
     public function get(string $path, array $query = []): array
     {
+        $this->requests[] = ['method' => 'GET', 'path' => $path, 'body' => $query];
         return match (true) {
             preg_match('#^/ojs/v1/jobs/(.+)$#', $path, $m) === 1 => $this->handleGetJob($m[1]),
             $path === '/ojs/v1/queues' => ['queues' => array_keys($this->queues) ?: ['default']],
             str_starts_with($path, '/ojs/v1/queues/') && str_ends_with($path, '/stats') => $this->handleQueueStats($path),
             $path === '/ojs/v1/dead-letter' => ['jobs' => $this->getDeadLetterJobs()],
-            $path === '/ojs/v1/cron' => ['cron_jobs' => array_map(fn(CronJob $c) => $c->toArray(), $this->cronJobs)],
+            $path === '/ojs/v1/cron' => ['cron_jobs' => array_values(array_map(fn(CronJob $c) => $c->toArray(), $this->cronJobs))],
             $path === '/ojs/v1/health' => ['status' => 'ok'],
             $path === '/ojs/manifest' => ['version' => '1.0', 'level' => 4],
             $path === '/ojs/v1/schemas' => ['schemas' => $this->schemas],
@@ -72,6 +74,7 @@ class FakeTransport implements Transport
 
     public function delete(string $path): array
     {
+        $this->requests[] = ['method' => 'DELETE', 'path' => $path, 'body' => []];
         return match (true) {
             preg_match('#^/ojs/v1/jobs/(.+)$#', $path, $m) === 1 => $this->handleCancel($m[1]),
             str_starts_with($path, '/ojs/v1/cron/') => $this->handleUnregisterCron($path),
@@ -79,6 +82,42 @@ class FakeTransport implements Transport
             str_starts_with($path, '/ojs/v1/schemas/') => $this->handleDeleteSchema($path),
             default => [],
         };
+    }
+
+    // ── Test Helpers ────────────────────────────────────────
+
+    /**
+     * Dispatch a raw request (recording it) and return the decoded response.
+     *
+     * A convenience for tests that want to exercise the transport directly and
+     * later inspect {@see self::requests()}.
+     */
+    public function request(string $method, string $path, array $body = []): array
+    {
+        return match (strtoupper($method)) {
+            'POST' => $this->post($path, $body),
+            'GET' => $this->get($path, $body),
+            'DELETE' => $this->delete($path),
+            default => throw new \InvalidArgumentException("Unsupported HTTP method: {$method}"),
+        };
+    }
+
+    /**
+     * All requests recorded so far, in order.
+     *
+     * @return list<array{method: string, path: string, body: array}>
+     */
+    public function requests(): array
+    {
+        return $this->requests;
+    }
+
+    /**
+     * Directly enqueue a job (bypassing a Client), returning its array form.
+     */
+    public function enqueue(string $type, array $args = [], string $queue = 'default'): array
+    {
+        return $this->handleEnqueue(['type' => $type, 'args' => $args, 'queue' => $queue]);
     }
 
     // ── Query Methods ───────────────────────────────────────
@@ -89,6 +128,19 @@ class FakeTransport implements Transport
     public function enqueued(string $type, ?array $args = null, ?string $queue = null): bool
     {
         return $this->findEnqueued($type, $args, $queue) !== null;
+    }
+
+    /**
+     * Find the first enqueued job matching the given criteria, or null.
+     */
+    public function findEnqueued(string $type, ?array $args = null, ?string $queue = null): ?FakeJob
+    {
+        foreach ($this->allEnqueued($type, $queue) as $job) {
+            if ($args === null || $job->args === $args) {
+                return $job;
+            }
+        }
+        return null;
     }
 
     /**
@@ -149,8 +201,23 @@ class FakeTransport implements Transport
      * @param array<string, callable> $handlers Map of type => handler
      * @return int Number of jobs processed
      */
-    public function drain(array $handlers, int $maxJobs = 100): int
+    /**
+     * Drain available jobs.
+     *
+     * When given a map of `type => handler`, each available job is processed
+     * through its handler and the number processed is returned. When given a
+     * queue name (string), all available jobs on that queue are marked
+     * completed and returned as arrays.
+     *
+     * @param array<string, callable>|string $handlers Handler map or a queue name
+     * @return int|array<int, array> Count processed, or the drained job arrays
+     */
+    public function drain(array|string $handlers, int $maxJobs = 100): int|array
     {
+        if (is_string($handlers)) {
+            return $this->drainQueue($handlers, $maxJobs);
+        }
+
         $processed = 0;
         foreach ($this->jobs as $job) {
             if ($job->state !== 'available' || $processed >= $maxJobs) {
@@ -180,6 +247,26 @@ class FakeTransport implements Transport
     }
 
     /**
+     * Mark all available jobs on a queue as completed and return them.
+     *
+     * @return array<int, array>
+     */
+    private function drainQueue(string $queue, int $maxJobs): array
+    {
+        $drained = [];
+        foreach ($this->jobs as $job) {
+            if (count($drained) >= $maxJobs) {
+                break;
+            }
+            if ($job->state === 'available' && $job->queue === $queue) {
+                $job->state = 'completed';
+                $drained[] = $job->toArray();
+            }
+        }
+        return $drained;
+    }
+
+    /**
      * Clear all stored jobs and state.
      */
     public function clear(): void
@@ -189,6 +276,7 @@ class FakeTransport implements Transport
         $this->schemas = [];
         $this->queues = [];
         $this->counter = 0;
+        $this->requests = [];
     }
 
     // ── Internal Handlers ───────────────────────────────────
@@ -224,7 +312,7 @@ class FakeTransport implements Transport
 
     private function handleFetch(array $body): array
     {
-        $queues = $body['queues'] ?? ['default'];
+        $queues = $body['queues'] ?? null;
         $count = $body['count'] ?? 1;
         $fetched = [];
 
@@ -232,7 +320,7 @@ class FakeTransport implements Transport
             if (count($fetched) >= $count) {
                 break;
             }
-            if ($job->state === 'available' && in_array($job->queue, $queues, true)) {
+            if ($job->state === 'available' && ($queues === null || in_array($job->queue, $queues, true))) {
                 $job->state = 'active';
                 $job->attempt++;
                 $fetched[] = $job->toArray();
@@ -275,10 +363,11 @@ class FakeTransport implements Transport
 
     private function handleCancel(string $jobId): array
     {
-        if (isset($this->jobs[$jobId])) {
-            $this->jobs[$jobId]->state = 'cancelled';
+        $job = $this->jobs[$jobId] ?? null;
+        if ($job !== null) {
+            $job->state = 'cancelled';
         }
-        return $this->jobs[$jobId]?->toArray() ?? [];
+        return $job?->toArray() ?? [];
     }
 
     private function handleQueueStats(string $path): array
@@ -306,11 +395,12 @@ class FakeTransport implements Transport
     {
         preg_match('#/ojs/v1/dead-letter/(.+)/retry#', $path, $m);
         $jobId = $m[1] ?? '';
-        if (isset($this->jobs[$jobId])) {
-            $this->jobs[$jobId]->state = 'available';
-            $this->jobs[$jobId]->error = null;
+        $job = $this->jobs[$jobId] ?? null;
+        if ($job !== null) {
+            $job->state = 'available';
+            $job->error = null;
         }
-        return $this->jobs[$jobId]?->toArray() ?? [];
+        return $job?->toArray() ?? [];
     }
 
     private function handleDiscardDeadLetter(string $path): array
@@ -371,136 +461,5 @@ class FakeTransport implements Transport
     {
         $this->counter++;
         return sprintf('fake-%06d', $this->counter);
-    }
-}
-
-/**
- * Mutable job representation for the fake transport.
- */
-class FakeJob
-{
-    public string $state = 'available';
-    public int $attempt = 0;
-    public mixed $result = null;
-    public ?array $error = null;
-    public string $createdAt;
-
-    public function __construct(
-        public readonly string $id,
-        public readonly string $type,
-        public readonly array $args,
-        public readonly string $queue = 'default',
-        public readonly int $priority = 0,
-        public readonly array $meta = [],
-        public readonly ?string $scheduledAt = null,
-        public readonly ?array $retry = null,
-        public readonly ?array $unique = null,
-        public readonly ?string $schema = null,
-        public readonly ?int $timeout = null,
-    ) {
-        $this->createdAt = date('c');
-        $this->state = $scheduledAt !== null ? 'scheduled' : 'available';
-    }
-
-    public function toArray(): array
-    {
-        $data = [
-            'id' => $this->id,
-            'type' => $this->type,
-            'args' => $this->args,
-            'queue' => $this->queue,
-            'state' => $this->state,
-            'attempt' => $this->attempt,
-            'priority' => $this->priority,
-            'created_at' => $this->createdAt,
-        ];
-        if ($this->meta !== []) {
-            $data['meta'] = $this->meta;
-        }
-        if ($this->scheduledAt !== null) {
-            $data['scheduled_at'] = $this->scheduledAt;
-        }
-        if ($this->error !== null) {
-            $data['error'] = $this->error;
-        }
-        if ($this->result !== null) {
-            $data['result'] = $this->result;
-        }
-        if ($this->retry !== null) {
-            $data['retry'] = $this->retry;
-        }
-        if ($this->unique !== null) {
-            $data['unique'] = $this->unique;
-        }
-        if ($this->schema !== null) {
-            $data['schema'] = $this->schema;
-        }
-        if ($this->timeout !== null) {
-            $data['timeout'] = $this->timeout;
-        }
-        return $data;
-    }
-}
-
-/**
- * PHPUnit assertion helpers for OJS testing.
- *
- * Usage:
- *   use OpenJobSpec\Testing\OjsAssertions;
- *   class MyTest extends TestCase {
- *       use OjsAssertions;
- *       ...
- *       $this->assertEnqueued($transport, 'email.send');
- *   }
- */
-trait OjsAssertions
-{
-    protected function assertEnqueued(FakeTransport $transport, string $type, ?array $args = null, ?string $queue = null): void
-    {
-        $found = $transport->allEnqueued($type, $queue);
-        $msg = "Expected job type '{$type}' to be enqueued";
-        if ($queue !== null) {
-            $msg .= " on queue '{$queue}'";
-        }
-
-        $this->assertNotEmpty($found, $msg);
-
-        if ($args !== null) {
-            $argsMatch = false;
-            foreach ($found as $job) {
-                if ($job->args === $args) {
-                    $argsMatch = true;
-                    break;
-                }
-            }
-            $this->assertTrue($argsMatch, "{$msg} with matching args");
-        }
-    }
-
-    protected function refuteEnqueued(FakeTransport $transport, string $type, ?string $queue = null): void
-    {
-        $found = $transport->allEnqueued($type, $queue);
-        $msg = "Expected job type '{$type}' NOT to be enqueued";
-        $this->assertEmpty($found, $msg);
-    }
-
-    protected function assertEnqueuedCount(FakeTransport $transport, int $count, ?string $type = null, ?string $queue = null): void
-    {
-        $actual = $transport->enqueuedCount($type, $queue);
-        $msg = "Expected {$count} enqueued jobs";
-        if ($type !== null) {
-            $msg .= " of type '{$type}'";
-        }
-        $this->assertEquals($count, $actual, $msg);
-    }
-
-    protected function assertCompleted(FakeTransport $transport, string $type): void
-    {
-        $this->assertTrue($transport->completed($type), "Expected job type '{$type}' to be completed");
-    }
-
-    protected function assertFailed(FakeTransport $transport, string $type): void
-    {
-        $this->assertTrue($transport->failed($type), "Expected job type '{$type}' to be failed");
     }
 }

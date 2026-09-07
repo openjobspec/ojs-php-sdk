@@ -243,7 +243,12 @@ class AgentClient
             throw new \RuntimeException("request to {$url} failed");
         }
 
-        $statusCode = $this->extractStatusCode($http_response_header ?? []);
+        /** @var string[] $legacyResponseHeaders */
+        $legacyResponseHeaders = get_defined_vars()['http_response_header'];
+        $responseHeaders = function_exists('http_get_last_response_headers')
+            ? (http_get_last_response_headers() ?? [])
+            : $legacyResponseHeaders;
+        $statusCode = $this->extractStatusCode($responseHeaders);
 
         if ($statusCode >= 200 && $statusCode < 300) {
             return json_decode($response, true, 512, JSON_THROW_ON_ERROR) ?: [];

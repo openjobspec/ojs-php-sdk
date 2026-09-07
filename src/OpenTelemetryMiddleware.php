@@ -28,8 +28,7 @@ class OpenTelemetryMiddleware implements Middleware
         }
 
         $job = $ctx->job;
-        $parentContext = $this->extractContext($job->meta);
-        $span = $this->startSpan($job, $parentContext);
+        $span = $this->startSpan($job);
 
         try {
             $result = $next($ctx);
@@ -46,16 +45,7 @@ class OpenTelemetryMiddleware implements Middleware
         return interface_exists('\\OpenTelemetry\\API\\Trace\\TracerInterface');
     }
 
-    private function extractContext(array $meta): ?object
-    {
-        if (!isset($meta['trace_id']) || !class_exists('\\OpenTelemetry\\API\\Trace\\SpanContext')) {
-            return null;
-        }
-
-        return null;
-    }
-
-    private function startSpan(Job $job, ?object $parentContext): ?object
+    private function startSpan(Job $job): ?object
     {
         if ($this->tracer === null || !method_exists($this->tracer, 'spanBuilder')) {
             return null;

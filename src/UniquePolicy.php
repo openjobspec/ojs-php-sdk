@@ -13,7 +13,7 @@ class UniquePolicy
         public readonly array $keys = ['type'],
         public readonly array $argsKeys = [],
         public readonly array $metaKeys = [],
-        public readonly ?string $period = null,
+        public readonly int|string|null $period = null,
         public readonly array $states = ['available', 'active', 'scheduled', 'retryable', 'pending'],
         public readonly string $onConflict = 'reject',
     ) {

@@ -1,0 +1,48 @@
+name: Post-release registry verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Released package version (without a leading v)
+        required: true
+        type: string
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  packagist:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: "8.3"
+          extensions: curl, json
+          tools: composer:v2
+
+      - name: Resolve release version
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          MANUAL_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$EVENT_NAME" = "release" ]; then
+            VERSION="${RELEASE_TAG#v}"
+          else
+            VERSION="$MANUAL_VERSION"
+          fi
+          test -n "$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Install and verify Packagist release
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p .registry-smoke
+          composer require --working-dir=.registry-smoke "openjobspec/sdk:${RELEASE_VERSION}" --no-interaction --no-progress
+          php -r 'require ".registry-smoke/vendor/autoload.php"; if (!class_exists(OpenJobSpec\Client::class)) { exit(1); }'

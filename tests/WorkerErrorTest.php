@@ -8,10 +8,10 @@ use OpenJobSpec\Client;
 use OpenJobSpec\Job;
 use OpenJobSpec\Testing\FakeTransport;
 use OpenJobSpec\Worker;
-use OpenJobSpec\Errors\OjsException;
-use OpenJobSpec\Errors\ConnectionError;
-use OpenJobSpec\Errors\TimeoutError;
-use OpenJobSpec\Errors\ServerError;
+use OpenJobSpec\OjsException;
+use OpenJobSpec\ConnectionError;
+use OpenJobSpec\TimeoutError;
+use OpenJobSpec\ServerError;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -33,7 +33,7 @@ final class WorkerErrorTest extends TestCase
     {
         $this->transport->enqueue('error.test', [['action' => 'throw']], 'errors');
 
-        $worker = new Worker('http://localhost:8080', transport: $this->transport);
+        $worker = new Worker('http://localhost:8080', transport: $this->transport, queues: ['errors']);
         $worker->register('error.test', function ($ctx) {
             throw new \RuntimeException('Handler failed intentionally');
         });
@@ -43,7 +43,7 @@ final class WorkerErrorTest extends TestCase
         $requests = $this->transport->requests();
         $nackSent = false;
         foreach ($requests as $req) {
-            if (str_contains($req['path'] ?? '', 'nack')) {
+            if (str_contains($req['path'], 'nack')) {
                 $nackSent = true;
                 $this->assertArrayHasKey('error', $req['body']);
                 $this->assertStringContainsString('Handler failed intentionally', $req['body']['error']['message'] ?? '');
@@ -52,33 +52,86 @@ final class WorkerErrorTest extends TestCase
         $this->assertTrue($nackSent, 'Worker should NACK when handler throws exception');
     }
 
-    public function testHandlerReturningFalseIsNacked(): void
+    public function testHandlerReturningFalseIsAckedAsJsonFalse(): void
     {
         $this->transport->enqueue('error.false', [['action' => 'return-false']], 'errors');
 
-        $worker = new Worker('http://localhost:8080', transport: $this->transport);
+        $worker = new Worker('http://localhost:8080', transport: $this->transport, queues: ['errors']);
         $worker->register('error.false', function ($ctx) {
             return false;
+        });
+        $events = [];
+        $worker->on('*', function ($event) use (&$events): void {
+            $events[] = $event->type;
         });
 
         $worker->processOnce();
 
         $requests = $this->transport->requests();
-        $hasNack = false;
-        foreach ($requests as $req) {
-            if (str_contains($req['path'] ?? '', 'nack')) {
-                $hasNack = true;
-            }
+        $acks = array_values(array_filter(
+            $requests,
+            fn(array $request): bool => $request['path'] === '/ojs/v1/workers/ack',
+        ));
+        $nacks = array_values(array_filter(
+            $requests,
+            fn(array $request): bool => $request['path'] === '/ojs/v1/workers/nack',
+        ));
+
+        $this->assertCount(1, $acks);
+        $this->assertArrayHasKey('result', $acks[0]['body']);
+        $this->assertFalse($acks[0]['body']['result']);
+        $this->assertSame([], $nacks);
+        $this->assertContains('job.completed', $events);
+        $this->assertNotContains('job.failed', $events);
+        $this->assertTrue($this->transport->completed('error.false'));
+    }
+
+    public function testOtherFalseyJsonResultsAreAckedWithoutNack(): void
+    {
+        $results = [
+            'result.zero' => 0,
+            'result.empty_string' => '',
+            'result.empty_array' => [],
+        ];
+        $worker = new Worker('http://localhost:8080', transport: $this->transport, queues: ['results']);
+        $events = [];
+
+        foreach ($results as $type => $result) {
+            $this->transport->enqueue($type, [], 'results');
+            $worker->register($type, fn() => $result);
         }
-        // Handler returning false should trigger NACK (non-retryable)
-        $this->assertTrue($hasNack, 'Handler returning false should trigger NACK');
+        $worker->on('*', function ($event) use (&$events): void {
+            $events[] = $event->type;
+        });
+
+        $worker->processOnce();
+
+        $requests = $this->transport->requests();
+        $acks = array_values(array_filter(
+            $requests,
+            fn(array $request): bool => $request['path'] === '/ojs/v1/workers/ack',
+        ));
+        $nacks = array_values(array_filter(
+            $requests,
+            fn(array $request): bool => $request['path'] === '/ojs/v1/workers/nack',
+        ));
+
+        $this->assertSame([0, '', []], array_map(
+            fn(array $request): mixed => $request['body']['result'],
+            $acks,
+        ));
+        $this->assertSame([], $nacks);
+        $this->assertSame(3, count(array_filter(
+            $events,
+            fn(string $event): bool => $event === 'job.completed',
+        )));
     }
 
     public function testUnregisteredJobTypeIsNacked(): void
     {
         $this->transport->enqueue('unknown.type', [['data' => 1]], 'errors');
 
-        $worker = new Worker('http://localhost:8080', transport: $this->transport);
+        $worker = new Worker('http://localhost:8080', transport: $this->transport, queues: ['errors']);
         // Deliberately not registering a handler for 'unknown.type'
         $worker->register('other.type', function ($ctx) {});
 
@@ -87,7 +140,7 @@ final class WorkerErrorTest extends TestCase
         $requests = $this->transport->requests();
         $hasNack = false;
         foreach ($requests as $req) {
-            if (str_contains($req['path'] ?? '', 'nack')) {
+            if (str_contains($req['path'], 'nack')) {
                 $hasNack = true;
             }
         }
@@ -98,7 +151,7 @@ final class WorkerErrorTest extends TestCase
     {
         $this->transport->enqueue('overwrite.test', [['data' => 1]], 'errors');
 
-        $worker = new Worker('http://localhost:8080', transport: $this->transport);
+        $worker = new Worker('http://localhost:8080', transport: $this->transport, queues: ['errors']);
 
         $firstCalled = false;
         $secondCalled = false;
@@ -118,23 +171,22 @@ final class WorkerErrorTest extends TestCase
 
     public function testEmptyQueueDoesNotError(): void
     {
-        $worker = new Worker('http://localhost:8080', transport: $this->transport);
+        $worker = new Worker('http://localhost:8080', transport: $this->transport, queues: ['errors']);
         $worker->register('test.noop', function ($ctx) {});
 
         // processOnce on empty queue should not throw
         $worker->processOnce();
-        $this->assertTrue(true, 'Empty queue should not cause errors');
+        $fetch = $this->transport->requests()[0];
+        $this->assertSame(['errors'], $fetch['body']['queues']);
     }
 
     public function testHandlerWithTypeErrorIsNacked(): void
     {
         $this->transport->enqueue('type.error', [['data' => 1]], 'errors');
 
-        $worker = new Worker('http://localhost:8080', transport: $this->transport);
+        $worker = new Worker('http://localhost:8080', transport: $this->transport, queues: ['errors']);
         $worker->register('type.error', function ($ctx) {
-            // Deliberately cause a TypeError
-            $arr = null;
-            return count($arr); // @phpstan-ignore-line
+            throw new \TypeError('Deliberate handler type error');
         });
 
         $worker->processOnce();
@@ -142,7 +194,7 @@ final class WorkerErrorTest extends TestCase
         $requests = $this->transport->requests();
         $hasNack = false;
         foreach ($requests as $req) {
-            if (str_contains($req['path'] ?? '', 'nack')) {
+            if (str_contains($req['path'], 'nack')) {
                 $hasNack = true;
             }
         }
@@ -154,7 +206,7 @@ final class WorkerErrorTest extends TestCase
         $retryable = new ServerError('Backend unavailable', 503);
         $this->assertTrue($retryable->isRetryable());
 
-        $nonRetryable = new \OpenJobSpec\Errors\ValidationError('Bad input', 400);
+        $nonRetryable = new \OpenJobSpec\ValidationError('Bad input', 400);
         $this->assertFalse($nonRetryable->isRetryable());
     }
 
@@ -174,9 +226,45 @@ final class WorkerErrorTest extends TestCase
     public function testExceptionChainPreservesOriginal(): void
     {
         $original = new \RuntimeException('Original cause');
-        $wrapped = new ServerError('Wrapped error', 500, $original);
+        $wrapped = new ServerError('Wrapped error', 500, previous: $original);
 
         $this->assertSame($original, $wrapped->getPrevious());
         $this->assertStringContainsString('Wrapped error', $wrapped->getMessage());
+    }
+
+    public function testServerErrorPositionalConstructorCompatibility(): void
+    {
+        $original = new \RuntimeException('Original cause');
+        $error = new ServerError(
+            'Backend unavailable',
+            'backend_unavailable',
+            'req-123',
+            ['region' => 'eu-west'],
+            $original,
+        );
+
+        $this->assertSame('backend_unavailable', $error->code);
+        $this->assertSame('req-123', $error->requestId);
+        $this->assertSame(['region' => 'eu-west'], $error->details);
+        $this->assertSame($original, $error->getPrevious());
+        $this->assertSame(500, $error->httpStatus);
+    }
+
+    public function testServerErrorNamedConstructorCompatibility(): void
+    {
+        $original = new \RuntimeException('Original cause');
+        $error = new ServerError(
+            message: 'Backend unavailable',
+            code: 503,
+            requestId: 'req-456',
+            details: ['region' => 'us-east'],
+            previous: $original,
+        );
+
+        $this->assertSame(503, $error->getCode());
+        $this->assertSame('req-456', $error->requestId);
+        $this->assertSame(['region' => 'us-east'], $error->details);
+        $this->assertSame($original, $error->getPrevious());
+        $this->assertSame(503, $error->httpStatus);
     }
 }

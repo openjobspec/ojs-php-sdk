@@ -18,19 +18,50 @@ jobs:
       matrix:
         php-version: ["8.2", "8.3", "8.4"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
       - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
           php-version: ${{ matrix.php-version }}
-          extensions: json, pcntl
+          extensions: curl, json, pcntl
           tools: composer:v2
+      - name: Validate package metadata and lock file
+        run: |
+          composer validate --strict --no-check-publish
+          composer install --dry-run --no-interaction --no-progress
       - name: Install dependencies
-        run: composer install --prefer-dist --no-progress
+        run: composer install --prefer-dist --no-interaction --no-progress
       - name: Run tests
         run: vendor/bin/phpunit --testdox
       - name: Static analysis
-        run: |
-          composer require --dev phpstan/phpstan --no-interaction
-          vendor/bin/phpstan analyse src/ --level=5
+        run: composer analyse
         if: matrix.php-version == '8.3'
+      - name: Build package archive
+        if: matrix.php-version == '8.3'
+        run: composer archive --format=zip --dir=dist
+      - name: Smoke-test in a clean consumer project
+        if: matrix.php-version == '8.3'
+        run: |
+          mkdir -p .consumer
+          cat > .consumer/composer.json <<'JSON'
+          {
+            "name": "openjobspec/sdk-consumer-smoke",
+            "repositories": [
+              {
+                "type": "path",
+                "url": "..",
+                "options": {
+                  "symlink": false,
+                  "versions": {
+                    "openjobspec/sdk": "0.5.0"
+                  }
+                }
+              }
+            ],
+            "require": {
+              "openjobspec/sdk": "^0.5"
+            }
+          }
+          JSON
+          composer install --working-dir=.consumer --no-interaction --no-progress
+          php -r 'require ".consumer/vendor/autoload.php"; if (!class_exists(OpenJobSpec\Client::class)) { exit(1); }'

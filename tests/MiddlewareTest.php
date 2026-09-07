@@ -77,18 +77,18 @@ class MiddlewareTest extends TestCase
         $order = [];
 
         $chain = new MiddlewareChain();
-        $chain->add('a', fn(JobContext $ctx, callable $next) => (function () use (&$order, $next) {
+        $chain->add('a', function (JobContext $ctx, callable $next) use (&$order) {
             $order[] = 'a';
             return $next();
-        })());
-        $chain->add('c', fn(JobContext $ctx, callable $next) => (function () use (&$order, $next) {
+        });
+        $chain->add('c', function (JobContext $ctx, callable $next) use (&$order) {
             $order[] = 'c';
             return $next();
-        })());
-        $chain->insertBefore('c', 'b', fn(JobContext $ctx, callable $next) => (function () use (&$order, $next) {
+        });
+        $chain->insertBefore('c', 'b', function (JobContext $ctx, callable $next) use (&$order) {
             $order[] = 'b';
             return $next();
-        })());
+        });
 
         $chain->invoke($this->makeContext(), fn(JobContext $ctx) => null);
 
@@ -100,18 +100,18 @@ class MiddlewareTest extends TestCase
         $order = [];
 
         $chain = new MiddlewareChain();
-        $chain->add('a', fn(JobContext $ctx, callable $next) => (function () use (&$order, $next) {
+        $chain->add('a', function (JobContext $ctx, callable $next) use (&$order) {
             $order[] = 'a';
             return $next();
-        })());
-        $chain->add('c', fn(JobContext $ctx, callable $next) => (function () use (&$order, $next) {
+        });
+        $chain->add('c', function (JobContext $ctx, callable $next) use (&$order) {
             $order[] = 'c';
             return $next();
-        })());
-        $chain->insertAfter('a', 'b', fn(JobContext $ctx, callable $next) => (function () use (&$order, $next) {
+        });
+        $chain->insertAfter('a', 'b', function (JobContext $ctx, callable $next) use (&$order) {
             $order[] = 'b';
             return $next();
-        })());
+        });
 
         $chain->invoke($this->makeContext(), fn(JobContext $ctx) => null);
 

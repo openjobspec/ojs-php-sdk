@@ -11,8 +11,9 @@ class Client
 {
     private Transport $transport;
 
-    public function __construct(string $url, array $options = [])
+    public function __construct(string $url, array $options = [], mixed ...$named)
     {
+        $options = [...$options, ...$named];
         if (isset($options['transport']) && $options['transport'] instanceof Transport) {
             $this->transport = $options['transport'];
         } else {
@@ -25,9 +26,9 @@ class Client
     /**
      * Enqueue a single job.
      */
-    public function enqueue(string $type, array $args = [], array $options = []): Job
+    public function enqueue(string $type, array $args = [], array $options = [], mixed ...$named): Job
     {
-        $body = self::buildJobPayload($type, $args, $options);
+        $body = self::buildJobPayload($type, $args, [...$options, ...$named]);
         $response = $this->transport->post('/ojs/v1/jobs', $body);
         return Job::fromArray($response);
     }
@@ -180,6 +181,14 @@ class Client
     public function workflow(array $definition): array
     {
         return $this->transport->post('/ojs/v1/workflows', $definition);
+    }
+
+    /**
+     * Submit a workflow definition. Alias of {@see self::workflow()}.
+     */
+    public function createWorkflow(array $definition): array
+    {
+        return $this->workflow($definition);
     }
 
     // ── Schema Registry ─────────────────────────────────────

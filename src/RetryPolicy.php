@@ -11,14 +11,14 @@ class RetryPolicy
 {
     public function __construct(
         public readonly int $maxAttempts = 3,
-        public readonly string $initialInterval = 'PT1S',
+        public readonly int|string $initialInterval = 'PT1S',
         public readonly float $backoffCoefficient = 2.0,
-        public readonly string $maxInterval = 'PT5M',
+        public readonly int|string $maxInterval = 'PT5M',
         public readonly bool $jitter = true,
         public readonly array $nonRetryableErrors = [],
     ) {
-        if ($this->maxAttempts < 1) {
-            throw new ValidationError('maxAttempts must be >= 1');
+        if ($this->maxAttempts < 0) {
+            throw new ValidationError('maxAttempts must be >= 0');
         }
         if ($this->backoffCoefficient < 1.0) {
             throw new ValidationError('backoffCoefficient must be >= 1.0');
@@ -61,6 +61,7 @@ class RetryPolicy
                 'm' => $value * 60,
                 'h' => $value * 3600,
                 'd' => $value * 86400,
+                default => $value,
             };
         }
 
